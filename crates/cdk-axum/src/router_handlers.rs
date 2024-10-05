@@ -60,13 +60,25 @@ pub async fn get_keyset_pubkeys(
     Ok(Json(pubkeys))
 }
 
+#[utoipa::path(
+    get,
+    context_path = "/v1",
+    path = "/keysets",
+    responses(
+        (status = 200, description = "Successful response", body = KeysetResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+/// Get all active keyset IDs of the mint
+///
+/// This endpoint returns a list of keysets that the mint currently supports and will accept tokens from.
 pub async fn get_keysets(State(state): State<MintState>) -> Result<Json<KeysetResponse>, Response> {
-    let mint = state.mint.keysets().await.map_err(|err| {
-        tracing::error!("Could not get keyset: {}", err);
+    let keysets = state.mint.keysets().await.map_err(|err| {
+        tracing::error!("Could not get keysets: {}", err);
         into_response(err)
     })?;
 
-    Ok(Json(mint))
+    Ok(Json(keysets))
 }
 
 pub async fn get_mint_bolt11_quote(

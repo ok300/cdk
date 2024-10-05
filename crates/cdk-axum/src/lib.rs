@@ -13,7 +13,7 @@ use cdk::amount::Amount;
 use cdk::mint::Mint;
 use cdk::nuts::nut00::{CurrencyUnit, PaymentMethod};
 use cdk::nuts::nut01::{Keys, KeysResponse, PublicKey};
-use cdk::nuts::nut02::{Id, KeySet, KeySetVersion};
+use cdk::nuts::nut02::{Id, KeysetResponse, KeySet, KeySetInfo, KeySetVersion};
 use cdk::nuts::nut04;
 use cdk::nuts::nut04::MintMethodSettings;
 use cdk::nuts::nut05;
@@ -38,7 +38,9 @@ mod router_handlers;
             Id,
             Keys,
             KeysResponse,
+            KeysetResponse,
             KeySet,
+            KeySetInfo,
             KeySetVersion,
             MeltMethodSettings,
             MintInfo,
@@ -61,6 +63,7 @@ mod router_handlers;
     paths(
         get_keys,
         get_keyset_pubkeys,
+        get_keysets,
         get_mint_info
     )
 )]
