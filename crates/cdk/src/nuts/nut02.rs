@@ -224,7 +224,7 @@ impl From<&Keys> for Id {
 /// Mint Keysets [NUT-02]
 /// Ids of mints keyset ids
 #[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct KeysetResponse {
     /// set of public key ids that the mint generates
     #[serde_as(as = "VecSkipError<_>")]
@@ -254,7 +254,7 @@ impl From<MintKeySet> for KeySet {
 }
 
 /// KeySetInfo
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
 pub struct KeySetInfo {
     /// Keyset [`Id`]
     pub id: Id,
