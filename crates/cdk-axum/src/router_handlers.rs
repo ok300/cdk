@@ -13,6 +13,17 @@ use cdk::util::unix_time;
 
 use crate::MintState;
 
+#[utoipa::path(
+    get,
+    context_path = "/v1",
+    path = "/keys",
+    responses(
+        (status = 200, description = "Successful response", body = KeysResponse)
+    )
+)]
+/// Get the public keys of the newest mint keyset
+///
+/// This endpoint returns a dictionary of all supported token values of the mint and their associated public key.
 pub async fn get_keys(State(state): State<MintState>) -> Result<Json<KeysResponse>, Response> {
     let pubkeys = state.mint.pubkeys().await.map_err(|err| {
         tracing::error!("Could not get keys: {}", err);
@@ -144,8 +155,8 @@ pub async fn post_check(
 
 #[utoipa::path(
     get,
-    path = "/info",
     context_path = "/v1",
+    path = "/info",
     responses(
         (status = 200, description = "Successful response", body = MintInfo)
     )

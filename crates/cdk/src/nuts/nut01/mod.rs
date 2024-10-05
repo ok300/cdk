@@ -9,6 +9,7 @@ use bitcoin::secp256k1;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, VecSkipError};
 use thiserror::Error;
+use utoipa::ToSchema;
 
 mod public_key;
 mod secret_key;
@@ -38,7 +39,7 @@ pub enum Error {
 }
 
 /// Mint Keys [NUT-01]
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
 pub struct Keys(BTreeMap<String, PublicKey>);
 
 impl From<MintKeys> for Keys {
@@ -80,7 +81,7 @@ impl Keys {
 
 /// Mint Public Keys [NUT-01]
 #[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct KeysResponse {
     /// Keysets
     #[serde_as(as = "VecSkipError<_>")]
