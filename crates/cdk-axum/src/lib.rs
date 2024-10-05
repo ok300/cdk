@@ -9,6 +9,7 @@ use std::time::Duration;
 use anyhow::Result;
 use axum::routing::{get, post};
 use axum::Router;
+use cdk::error::{ErrorCode, ErrorResponse};
 use cdk::amount::Amount;
 use cdk::mint::Mint;
 use cdk::nuts::nut00::{CurrencyUnit, PaymentMethod};
@@ -41,6 +42,8 @@ pub struct MintState {
             Amount,
             ContactInfo,
             CurrencyUnit,
+            ErrorCode,
+            ErrorResponse,
             Id,
             Keys,
             KeysResponse,
@@ -66,6 +69,7 @@ pub struct MintState {
     ),
     paths(
         get_keys,
+        get_keyset_pubkeys,
         get_mint_info
     )
 )]

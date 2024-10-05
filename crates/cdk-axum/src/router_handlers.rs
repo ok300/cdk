@@ -69,6 +69,21 @@ pub async fn get_keys(State(state): State<MintState>) -> Result<Json<KeysRespons
     Ok(Json(pubkeys))
 }
 
+#[utoipa::path(
+    get,
+    context_path = "/v1",
+    path = "/keys/{keyset_id}",
+    params(
+        ("keyset_id" = String, description = "The keyset ID"),
+    ),
+    responses(
+        (status = 200, description = "Successful response", body = KeysResponse),
+        (status = 500, description = "Server error", body = ErrorResponse)
+    )
+)]
+/// Get the public keys of a specific keyset
+///
+/// Get the public keys of the mint from a specific keyset ID.
 pub async fn get_keyset_pubkeys(
     State(state): State<MintState>,
     Path(keyset_id): Path<Id>,
