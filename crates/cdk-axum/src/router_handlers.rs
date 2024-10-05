@@ -142,6 +142,15 @@ pub async fn post_check(
     Ok(Json(state))
 }
 
+#[utoipa::path(
+    get,
+    path = "/info",
+    context_path = "/v1",
+    responses(
+        (status = 200, description = "Successful response", body = MintInfo)
+    )
+)]
+/// Mint information, operator contact information, and other info
 pub async fn get_mint_info(State(state): State<MintState>) -> Result<Json<MintInfo>, Response> {
     Ok(Json(state.mint.mint_info().clone().time(unix_time())))
 }
