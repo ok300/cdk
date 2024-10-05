@@ -12,7 +12,8 @@ use axum::Router;
 use cdk::amount::Amount;
 use cdk::mint::Mint;
 use cdk::nuts::nut00::{CurrencyUnit, PaymentMethod};
-use cdk::nuts::nut01::PublicKey;
+use cdk::nuts::nut01::{Keys, KeysResponse, PublicKey};
+use cdk::nuts::nut02::{Id, KeySet, KeySetVersion};
 use cdk::nuts::nut04;
 use cdk::nuts::nut04::MintMethodSettings;
 use cdk::nuts::nut05;
@@ -40,6 +41,11 @@ pub struct MintState {
             Amount,
             ContactInfo,
             CurrencyUnit,
+            Id,
+            Keys,
+            KeysResponse,
+            KeySet,
+            KeySetVersion,
             MeltMethodSettings,
             MintInfo,
             MintMethodSettings,
@@ -59,6 +65,7 @@ pub struct MintState {
         title = "cdk-mintd",
     ),
     paths(
+        get_keys,
         get_mint_info
     )
 )]

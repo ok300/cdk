@@ -21,6 +21,7 @@ use bitcoin::secp256k1;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, VecSkipError};
 use thiserror::Error;
+use utoipa::ToSchema;
 
 use super::nut01::Keys;
 #[cfg(feature = "mint")]
@@ -48,7 +49,7 @@ pub enum Error {
 }
 
 /// Keyset version
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToSchema)]
 pub enum KeySetVersion {
     /// Current Version 00
     Version00,
@@ -83,7 +84,7 @@ impl fmt::Display for KeySetVersion {
 /// anyone who knows the set of public keys of a mint. The keyset ID **CAN**
 /// be stored in a Cashu token such that the token can be used to identify
 /// which mint or keyset it was generated from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToSchema)]
 pub struct Id {
     version: KeySetVersion,
     id: [u8; Self::BYTELEN],
@@ -231,7 +232,7 @@ pub struct KeysetResponse {
 }
 
 /// Keyset
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
 pub struct KeySet {
     /// Keyset [`Id`]
     pub id: Id,
