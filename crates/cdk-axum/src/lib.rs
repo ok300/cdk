@@ -8,6 +8,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use axum::routing::{get, post};
 use axum::Router;
+use cdk::error::{ErrorCode, ErrorResponse};
 use cdk::amount::Amount;
 use cdk::mint::Mint;
 use cdk::nuts::nut00::{CurrencyUnit, PaymentMethod};
@@ -32,6 +33,8 @@ mod router_handlers;
             Amount,
             ContactInfo,
             CurrencyUnit,
+            ErrorCode,
+            ErrorResponse,
             Id,
             Keys,
             KeysResponse,
@@ -57,6 +60,7 @@ mod router_handlers;
     ),
     paths(
         get_keys,
+        get_keyset_pubkeys,
         get_mint_info
     )
 )]

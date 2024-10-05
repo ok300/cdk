@@ -5,6 +5,7 @@ use std::fmt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use thiserror::Error;
+use utoipa::ToSchema;
 
 #[cfg(feature = "wallet")]
 use crate::wallet::multi_mint_wallet::WalletKey;
@@ -242,8 +243,8 @@ pub enum Error {
 
 /// CDK Error Response
 ///
-/// See NUT defenation in [00](https://github.com/cashubtc/nuts/blob/main/00.md)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// See NUT definition in [00](https://github.com/cashubtc/nuts/blob/main/00.md)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ErrorResponse {
     /// Error Code
     pub code: ErrorCode,
@@ -398,7 +399,7 @@ impl From<ErrorResponse> for Error {
 }
 
 /// Possible Error Codes
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, ToSchema)]
 pub enum ErrorCode {
     /// Token is already spent
     TokenAlreadySpent,
