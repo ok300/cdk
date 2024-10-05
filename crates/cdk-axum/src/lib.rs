@@ -4,14 +4,25 @@
 #![warn(rustdoc::bare_urls)]
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use axum::routing::{get, post};
 use axum::Router;
+use cdk::amount::Amount;
 use cdk::mint::Mint;
+use cdk::nuts::nut00::{CurrencyUnit, PaymentMethod};
+use cdk::nuts::nut01::PublicKey;
+use cdk::nuts::nut04;
+use cdk::nuts::nut04::MintMethodSettings;
+use cdk::nuts::nut05;
+use cdk::nuts::nut05::MeltMethodSettings;
+use cdk::nuts::nut06::{ContactInfo, MintInfo, MintVersion, Nuts, SupportedSettings};
+use cdk::nuts::nut15;
+use cdk::nuts::nut15::MppMethodSettings;
 use moka::future::Cache;
 use router_handlers::*;
-use std::time::Duration;
+use utoipa::OpenApi;
 
 mod router_handlers;
 
@@ -21,6 +32,38 @@ pub struct MintState {
     mint: Arc<Mint>,
     cache: Cache<String, String>,
 }
+
+#[derive(OpenApi)]
+#[openapi(
+    components(
+        schemas(
+            Amount,
+            ContactInfo,
+            CurrencyUnit,
+            MeltMethodSettings,
+            MintInfo,
+            MintMethodSettings,
+            MintVersion,
+            MppMethodSettings,
+            Nuts,
+            PaymentMethod,
+            PublicKey,
+            SupportedSettings,
+            nut04::Settings,
+            nut05::Settings,
+            nut15::Settings
+        )
+    ),
+    info(
+        description = "Cashu CDK mint APIs",
+        title = "cdk-mintd",
+    ),
+    paths(
+        get_mint_info
+    )
+)]
+/// OpenAPI spec for the mint's v1 APIs
+pub struct ApiDocV1;
 
 /// Create mint [`Router`] with required endpoints for cashu mint
 pub async fn create_mint_router(mint: Arc<Mint>, cache_ttl: u64, cache_tti: u64) -> Result<Router> {

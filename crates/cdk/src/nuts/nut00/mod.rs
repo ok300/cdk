@@ -10,6 +10,7 @@ use std::string::FromUtf8Error;
 
 use serde::{de, Deserialize, Deserializer, Serialize};
 use thiserror::Error;
+use utoipa::ToSchema;
 
 use super::nut10;
 use super::nut11::SpendingConditions;
@@ -337,7 +338,7 @@ where
 
 /// Currency Unit
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, ToSchema)]
 pub enum CurrencyUnit {
     /// Sat
     #[default]
@@ -408,7 +409,7 @@ impl<'de> Deserialize<'de> for CurrencyUnit {
 
 /// Payment Method
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, ToSchema)]
 pub enum PaymentMethod {
     /// Bolt11 payment type
     #[default]
