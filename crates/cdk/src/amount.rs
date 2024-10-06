@@ -26,7 +26,9 @@ pub enum Error {
 }
 
 /// Amount can be any unit
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, ToSchema,
+)]
 #[serde(transparent)]
 pub struct Amount(u64);
 

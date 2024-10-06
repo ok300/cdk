@@ -9,12 +9,12 @@ use std::time::Duration;
 use anyhow::Result;
 use axum::routing::{get, post};
 use axum::Router;
-use cdk::error::{ErrorCode, ErrorResponse};
 use cdk::amount::Amount;
+use cdk::error::{ErrorCode, ErrorResponse};
 use cdk::mint::Mint;
 use cdk::nuts::nut00::{CurrencyUnit, PaymentMethod};
 use cdk::nuts::nut01::{Keys, KeysResponse, PublicKey};
-use cdk::nuts::nut02::{Id, KeysetResponse, KeySet, KeySetInfo, KeySetVersion};
+use cdk::nuts::nut02::{Id, KeySet, KeySetInfo, KeySetVersion, KeysetResponse};
 use cdk::nuts::nut04;
 use cdk::nuts::nut04::MintMethodSettings;
 use cdk::nuts::nut05;
@@ -37,44 +37,34 @@ pub struct MintState {
 
 #[derive(OpenApi)]
 #[openapi(
-    components(
-        schemas(
-            Amount,
-            ContactInfo,
-            CurrencyUnit,
-            ErrorCode,
-            ErrorResponse,
-            Id,
-            Keys,
-            KeysResponse,
-            KeysetResponse,
-            KeySet,
-            KeySetInfo,
-            KeySetVersion,
-            MeltMethodSettings,
-            MintInfo,
-            MintMethodSettings,
-            MintVersion,
-            MppMethodSettings,
-            Nuts,
-            PaymentMethod,
-            PublicKey,
-            SupportedSettings,
-            nut04::Settings,
-            nut05::Settings,
-            nut15::Settings
-        )
-    ),
-    info(
-        description = "Cashu CDK mint APIs",
-        title = "cdk-mintd",
-    ),
-    paths(
-        get_keys,
-        get_keyset_pubkeys,
-        get_keysets,
-        get_mint_info
-    )
+    components(schemas(
+        Amount,
+        ContactInfo,
+        CurrencyUnit,
+        ErrorCode,
+        ErrorResponse,
+        Id,
+        Keys,
+        KeysResponse,
+        KeysetResponse,
+        KeySet,
+        KeySetInfo,
+        KeySetVersion,
+        MeltMethodSettings,
+        MintInfo,
+        MintMethodSettings,
+        MintVersion,
+        MppMethodSettings,
+        Nuts,
+        PaymentMethod,
+        PublicKey,
+        SupportedSettings,
+        nut04::Settings,
+        nut05::Settings,
+        nut15::Settings
+    )),
+    info(description = "Cashu CDK mint APIs", title = "cdk-mintd",),
+    paths(get_keys, get_keyset_pubkeys, get_keysets, get_mint_info)
 )]
 /// OpenAPI spec for the mint's v1 APIs
 pub struct ApiDocV1;
