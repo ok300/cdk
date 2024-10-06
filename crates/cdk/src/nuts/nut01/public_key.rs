@@ -7,15 +7,17 @@ use bitcoin::hashes::Hash;
 use bitcoin::secp256k1::schnorr::Signature;
 use bitcoin::secp256k1::{self, Message, XOnlyPublicKey};
 use serde::{Deserialize, Deserializer, Serialize};
+#[cfg(feature = "mint")]
 use utoipa::ToSchema;
 
 use super::Error;
 use crate::SECP256K1;
 
 /// PublicKey
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "mint", derive(ToSchema))]
 pub struct PublicKey {
-    #[schema(value_type = String)]
+    #[cfg_attr(feature = "mint", schema(value_type = String))]
     inner: secp256k1::PublicKey,
 }
 
