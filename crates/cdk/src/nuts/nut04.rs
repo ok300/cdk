@@ -8,6 +8,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use thiserror::Error;
+#[cfg(feature = "mint")]
 use utoipa::ToSchema;
 
 use super::nut00::{BlindSignature, BlindedMessage, CurrencyUnit, PaymentMethod};
@@ -203,7 +204,8 @@ pub struct MintBolt11Response {
 }
 
 /// Mint Method Settings
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "mint", derive(ToSchema))]
 pub struct MintMethodSettings {
     /// Payment Method e.g. bolt11
     pub method: PaymentMethod,
@@ -221,8 +223,8 @@ pub struct MintMethodSettings {
 }
 
 /// Mint Settings
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
-#[schema(as = nut04::Settings)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "mint", derive(ToSchema), schema(as = nut04::Settings))]
 pub struct Settings {
     /// Methods to mint
     pub methods: Vec<MintMethodSettings>,

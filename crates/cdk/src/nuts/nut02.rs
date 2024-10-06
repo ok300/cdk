@@ -21,6 +21,7 @@ use bitcoin::secp256k1;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{serde_as, VecSkipError};
 use thiserror::Error;
+#[cfg(feature = "mint")]
 use utoipa::ToSchema;
 
 use super::nut01::Keys;
@@ -49,7 +50,8 @@ pub enum Error {
 }
 
 /// Keyset version
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "mint", derive(ToSchema))]
 pub enum KeySetVersion {
     /// Current Version 00
     Version00,
@@ -84,7 +86,8 @@ impl fmt::Display for KeySetVersion {
 /// anyone who knows the set of public keys of a mint. The keyset ID **CAN**
 /// be stored in a Cashu token such that the token can be used to identify
 /// which mint or keyset it was generated from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "mint", derive(ToSchema))]
 pub struct Id {
     version: KeySetVersion,
     id: [u8; Self::BYTELEN],
@@ -224,7 +227,8 @@ impl From<&Keys> for Id {
 /// Mint Keysets [NUT-02]
 /// Ids of mints keyset ids
 #[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "mint", derive(ToSchema))]
 pub struct KeysetResponse {
     /// set of public key ids that the mint generates
     #[serde_as(as = "VecSkipError<_>")]
@@ -232,7 +236,8 @@ pub struct KeysetResponse {
 }
 
 /// Keyset
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(feature = "mint", derive(ToSchema))]
 pub struct KeySet {
     /// Keyset [`Id`]
     pub id: Id,
@@ -254,7 +259,8 @@ impl From<MintKeySet> for KeySet {
 }
 
 /// KeySetInfo
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(feature = "mint", derive(ToSchema))]
 pub struct KeySetInfo {
     /// Keyset [`Id`]
     pub id: Id,
