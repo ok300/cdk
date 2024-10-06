@@ -474,7 +474,10 @@ async fn main() -> anyhow::Result<()> {
     let v1_service = cdk_axum::create_mint_router(Arc::clone(&mint), cache_ttl, cache_tti).await?;
 
     let mut mint_service = Router::new()
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", cdk_axum::ApiDocV1::openapi()))
+        .merge(
+            SwaggerUi::new("/swagger-ui")
+                .url("/api-docs/openapi.json", cdk_axum::ApiDocV1::openapi()),
+        )
         .merge(v1_service)
         .layer(CorsLayer::permissive());
 

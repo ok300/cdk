@@ -49,7 +49,6 @@ post_cache_wrapper!(post_swap, SwapRequest, SwapResponse);
 post_cache_wrapper!(post_mint_bolt11, MintBolt11Request, MintBolt11Response);
 post_cache_wrapper!(post_melt_bolt11, MeltBolt11Request, MeltQuoteBolt11Response);
 
-
 #[utoipa::path(
     get,
     context_path = "/v1",
