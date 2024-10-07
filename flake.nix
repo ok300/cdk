@@ -135,8 +135,6 @@
               cargo update -p serde_with --precise 3.1.0
               cargo update -p regex --precise 1.9.6
               cargo update -p backtrace --precise 0.3.58
-              cargo update -p utoipa --precise 4.2.0
-              cargo update -p utoipa-gen --precise 4.2.0
               # For wasm32-unknown-unknown target
               cargo update -p bumpalo --precise 3.12.0
               cargo update -p moka --precise 0.11.1
