@@ -164,16 +164,12 @@ pub async fn mint_proofs(
         description,
     };
 
-    let mint_quote = wallet_client
-        .post_mint_quote(mint_url.parse()?, request)
-        .await?;
+    let mint_quote = wallet_client.post_mint_quote(mint_url.parse()?, request)?;
 
     println!("Please pay: {}", mint_quote.request);
 
     loop {
-        let status = wallet_client
-            .get_mint_quote_status(mint_url.parse()?, &mint_quote.quote)
-            .await?;
+        let status = wallet_client.get_mint_quote_status(mint_url.parse()?, &mint_quote.quote)?;
 
         if status.state == MintQuoteState::Paid {
             break;
@@ -190,7 +186,7 @@ pub async fn mint_proofs(
         outputs: premint_secrets.blinded_messages(),
     };
 
-    let mint_response = wallet_client.post_mint(mint_url.parse()?, request).await?;
+    let mint_response = wallet_client.post_mint(mint_url.parse()?, request)?;
 
     let pre_swap_proofs = construct_proofs(
         mint_response.signatures,

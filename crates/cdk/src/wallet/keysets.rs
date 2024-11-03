@@ -18,8 +18,7 @@ impl Wallet {
         } else {
             let keys = self
                 .client
-                .get_mint_keyset(self.mint_url.clone(), keyset_id)
-                .await?;
+                .get_mint_keyset(self.mint_url.clone(), keyset_id)?;
 
             keys.verify_id()?;
 
@@ -36,7 +35,7 @@ impl Wallet {
     /// Queries mint for all keysets
     #[instrument(skip(self))]
     pub async fn get_mint_keysets(&self) -> Result<Vec<KeySetInfo>, Error> {
-        let keysets = self.client.get_mint_keysets(self.mint_url.clone()).await?;
+        let keysets = self.client.get_mint_keysets(self.mint_url.clone())?;
 
         self.localstore
             .add_mint_keysets(self.mint_url.clone(), keysets.keysets.clone())
@@ -51,7 +50,7 @@ impl Wallet {
     /// keysets
     #[instrument(skip(self))]
     pub async fn get_active_mint_keyset(&self) -> Result<KeySetInfo, Error> {
-        let keysets = self.client.get_mint_keysets(self.mint_url.clone()).await?;
+        let keysets = self.client.get_mint_keysets(self.mint_url.clone())?;
         let keysets = keysets.keysets;
 
         self.localstore

@@ -131,8 +131,7 @@ impl Wallet {
 
         let swap_response = self
             .client
-            .post_swap(mint_url.clone(), pre_swap.swap_request)
-            .await?;
+            .post_swap(mint_url.clone(), pre_swap.swap_request)?;
 
         // Proof to keep
         let recv_proofs = construct_proofs(

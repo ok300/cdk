@@ -16,9 +16,7 @@ pub async fn mint_info(proxy: Option<Url>, sub_command_args: &MintInfoSubcommand
         None => HttpClient::new(),
     };
 
-    let info = client
-        .get_mint_info(sub_command_args.mint_url.clone())
-        .await?;
+    let info = client.get_mint_info(sub_command_args.mint_url.clone())?;
 
     println!("{:#?}", info);
 

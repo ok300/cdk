@@ -66,8 +66,7 @@ impl Wallet {
 
         let spendable = self
             .client
-            .post_check_state(self.mint_url.clone(), CheckStateRequest { ys: proof_ys })
-            .await?
+            .post_check_state(self.mint_url.clone(), CheckStateRequest { ys: proof_ys })?
             .states;
 
         let unspent: Proofs = proofs
@@ -85,13 +84,10 @@ impl Wallet {
     /// NUT-07 Check the state of a [`Proof`] with the mint
     #[instrument(skip(self, proofs))]
     pub async fn check_proofs_spent(&self, proofs: Proofs) -> Result<Vec<ProofState>, Error> {
-        let spendable = self
-            .client
-            .post_check_state(
-                self.mint_url.clone(),
-                CheckStateRequest { ys: proofs.ys()? },
-            )
-            .await?;
+        let spendable = self.client.post_check_state(
+            self.mint_url.clone(),
+            CheckStateRequest { ys: proofs.ys()? },
+        )?;
         let spent_ys: Vec<_> = spendable
             .states
             .iter()
