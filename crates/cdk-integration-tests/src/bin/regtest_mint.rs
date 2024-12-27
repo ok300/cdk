@@ -181,14 +181,12 @@ async fn main() -> Result<()> {
                 let cln_sqlite_db = MintSqliteDatabase::new(&cln_mint_db_path)
                     .await
                     .expect("Could not create CLN mint db");
-                cln_sqlite_db.migrate().await;
                 create_mint(mint_addr, cln_mint_port, cln_sqlite_db, cln_backend)
                     .await
                     .expect("Could not start cln mint");
             });
 
             let lnd_sqlite_db = MintSqliteDatabase::new(&lnd_mint_db_path).await?;
-            lnd_sqlite_db.migrate().await;
             create_mint(mint_addr, lnd_mint_port, lnd_sqlite_db, lnd_backend).await?;
         }
         "REDB" => {
