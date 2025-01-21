@@ -23,11 +23,16 @@ The project is split up into several crates in the `crates/` directory:
     * [**cdk-lnd**](./crates/cdk-lnd/): Lnd Lightning backend for mint.
     * [**cdk-strike**](./crates/cdk-strike/): Strike Lightning backend for mint.
     * [**cdk-lnbits**](./crates/cdk-lnbits/): [LNbits](https://lnbits.com/) Lightning backend for mint.
+    * [**cdk-phoenixd**](./crates/cdk-phoenixd/): Phoenixd Lightning backend for mint.
     * [**cdk-fake-wallet**](./crates/cdk-fake-wallet/): Fake Lightning backend for mint. To be used only for testing, quotes are automatically filled.
 * Binaries:
     * [**cdk-cli**](./crates/cdk-cli/): Cashu wallet CLI.
     * [**cdk-mintd**](./crates/cdk-mintd/): Cashu Mint Binary.
 
+
+## Development 
+
+For a guide to settings up a development environment see [DEVELOPMENT.md](./DEVELOPMENT.md)
 
 ## Implemented [NUTs](https://github.com/cashubtc/nuts/):
 
@@ -57,13 +62,15 @@ The project is split up into several crates in the `crates/` directory:
 | [14][14] | Hashed Timelock Contracts (HTLCs) | :heavy_check_mark: |
 | [15][15] | Partial multi-path payments (MPP) | :heavy_check_mark: |
 | [16][16] | Animated QR codes | :x: |
-| [17][17] | WebSocket subscriptions  | :construction: |
+| [17][17] | WebSocket subscriptions  | :heavy_check_mark: |
+| [18][18] | Payment Requests  | :heavy_check_mark: |
+| [19][19] | Cached responses  | :heavy_check_mark: |
+| [20][20] | Signature on Mint Quote  | :heavy_check_mark: |
 
-MSRV
 
 ## Bindings
 
-Experimental bindings can be found in the [bindings](./bindings/) folder.
+Experimental JS bindings can be found in the [bindings repository](https://github.com/thesimplekid/cdk-js).
 
 ## License
 
@@ -71,9 +78,12 @@ Code is under the [MIT License](LICENSE)
 
 ## Contribution
 
-All contributions welcome.
+All contributions are welcome.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, shall be licensed as above, without any additional terms or conditions.
+
+Please see the [development guide](DEVELOPMENT.md).
+
 
 [00]: https://github.com/cashubtc/nuts/blob/main/00.md
 [01]: https://github.com/cashubtc/nuts/blob/main/01.md
@@ -93,3 +103,6 @@ Unless you explicitly state otherwise, any contribution intentionally submitted 
 [15]: https://github.com/cashubtc/nuts/blob/main/15.md
 [16]: https://github.com/cashubtc/nuts/blob/main/16.md
 [17]: https://github.com/cashubtc/nuts/blob/main/17.md
+[18]: https://github.com/cashubtc/nuts/blob/main/18.md
+[19]: https://github.com/cashubtc/nuts/blob/main/19.md
+[20]: https://github.com/cashubtc/nuts/blob/main/20.md

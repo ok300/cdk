@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use tracing::instrument;
 
 use crate::nuts::nut00::ProofsMethods;
-use crate::{nuts::CurrencyUnit, Amount, Error, Wallet};
+use crate::nuts::CurrencyUnit;
+use crate::{Amount, Error, Wallet};
 
 impl Wallet {
     /// Total unspent balance of wallet
@@ -19,7 +20,7 @@ impl Wallet {
 
         // TODO If only the proofs for this wallet's unit are retrieved, why build a map with key = unit?
         let balances = proofs.iter().fold(HashMap::new(), |mut acc, proof| {
-            *acc.entry(self.unit).or_insert(Amount::ZERO) += proof.amount;
+            *acc.entry(self.unit.clone()).or_insert(Amount::ZERO) += proof.amount;
             acc
         });
 
@@ -33,7 +34,7 @@ impl Wallet {
 
         // TODO If only the proofs for this wallet's unit are retrieved, why build a map with key = unit?
         let balances = proofs.iter().fold(HashMap::new(), |mut acc, proof| {
-            *acc.entry(self.unit).or_insert(Amount::ZERO) += proof.amount;
+            *acc.entry(self.unit.clone()).or_insert(Amount::ZERO) += proof.amount;
             acc
         });
 

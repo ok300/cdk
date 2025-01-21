@@ -1,13 +1,10 @@
 use tracing::instrument;
 
-use crate::nuts::nut00::ProofsMethods;
-use crate::{
-    amount::SplitTarget,
-    nuts::{Proofs, SpendingConditions, State, Token},
-    Amount, Error, Wallet,
-};
-
 use super::SendKind;
+use crate::amount::SplitTarget;
+use crate::nuts::nut00::ProofsMethods;
+use crate::nuts::{Proofs, SpendingConditions, State, Token};
+use crate::{Amount, Error, Wallet};
 
 impl Wallet {
     /// Send specific proofs
@@ -16,7 +13,12 @@ impl Wallet {
         let ys = proofs.ys()?;
         self.localstore.reserve_proofs(ys).await?;
 
-        Ok(Token::new(self.mint_url.clone(), proofs, memo, self.unit))
+        Ok(Token::new(
+            self.mint_url.clone(),
+            proofs,
+            memo,
+            self.unit.clone(),
+        ))
     }
 
     /// Send

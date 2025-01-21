@@ -4,6 +4,7 @@
 #![warn(rustdoc::bare_urls)]
 
 use std::pin::Pin;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -15,10 +16,7 @@ use cdk::cdk_lightning::{
     self, CreateInvoiceResponse, MintLightning, PayInvoiceResponse, PaymentQuoteResponse, Settings,
 };
 use cdk::mint::FeeReserve;
-use cdk::nuts::{
-    CurrencyUnit, MeltMethodSettings, MeltQuoteBolt11Request, MeltQuoteState, MintMethodSettings,
-    MintQuoteState,
-};
+use cdk::nuts::{CurrencyUnit, MeltQuoteBolt11Request, MeltQuoteState, MintQuoteState};
 use cdk::{mint, Bolt11Invoice};
 use error::Error;
 use futures::{Stream, StreamExt};
@@ -32,8 +30,6 @@ pub mod error;
 /// Phoenixd
 #[derive(Clone)]
 pub struct Phoenixd {
-    mint_settings: MintMethodSettings,
-    melt_settings: MeltMethodSettings,
     phoenixd_api: PhoenixdApi,
     fee_reserve: FeeReserve,
     receiver: Arc<Mutex<Option<tokio::sync::mpsc::Receiver<WebhookResponse>>>>,
@@ -47,16 +43,12 @@ impl Phoenixd {
     pub fn new(
         api_password: String,
         api_url: String,
-        mint_settings: MintMethodSettings,
-        melt_settings: MeltMethodSettings,
         fee_reserve: FeeReserve,
         receiver: Arc<Mutex<Option<tokio::sync::mpsc::Receiver<WebhookResponse>>>>,
         webhook_url: String,
     ) -> Result<Self, Error> {
         let phoenixd = PhoenixdApi::new(&api_password, &api_url)?;
         Ok(Self {
-            mint_settings,
-            melt_settings,
             phoenixd_api: phoenixd,
             fee_reserve,
             receiver,
@@ -86,12 +78,9 @@ impl MintLightning for Phoenixd {
         Settings {
             mpp: false,
             unit: CurrencyUnit::Sat,
-            mint_settings: self.mint_settings,
-            melt_settings: self.melt_settings,
             invoice_description: true,
         }
     }
-
     fn is_wait_invoice_active(&self) -> bool {
         self.wait_invoice_is_active.load(Ordering::SeqCst)
     }
@@ -172,16 +161,9 @@ impl MintLightning for Phoenixd {
             return Err(Error::UnsupportedUnit.into());
         }
 
-        let invoice_amount_msat = melt_quote_request
-            .request
-            .amount_milli_satoshis()
-            .ok_or(Error::UnknownInvoiceAmount)?;
+        let amount = melt_quote_request.amount_msat()?;
 
-        let amount = to_unit(
-            invoice_amount_msat,
-            &CurrencyUnit::Msat,
-            &melt_quote_request.unit,
-        )?;
+        let amount = amount / MSAT_IN_SAT.into();
 
         let relative_fee_reserve =
             (self.fee_reserve.percent_fee_reserve * u64::from(amount) as f32) as u64;
@@ -207,12 +189,16 @@ impl MintLightning for Phoenixd {
     async fn pay_invoice(
         &self,
         melt_quote: mint::MeltQuote,
-        partial_amount: Option<Amount>,
+        _partial_amount: Option<Amount>,
         _max_fee_msats: Option<Amount>,
     ) -> Result<PayInvoiceResponse, Self::Err> {
+        let msat_to_pay: Option<u64> = melt_quote
+            .msat_to_pay
+            .map(|a| <cdk::Amount as Into<u64>>::into(a) / MSAT_IN_SAT);
+
         let pay_response = self
             .phoenixd_api
-            .pay_bolt11_invoice(&melt_quote.request, partial_amount.map(|a| a.into()))
+            .pay_bolt11_invoice(&melt_quote.request, msat_to_pay)
             .await?;
 
         // The pay invoice response does not give the needed fee info so we have to check.
@@ -279,6 +265,19 @@ impl MintLightning for Phoenixd {
         &self,
         payment_id: &str,
     ) -> Result<PayInvoiceResponse, Self::Err> {
+        // We can only check the status of the payment if we have the payment id not if we only have a payment hash.
+        // In phd this is a uuid, that we get after getting a response from the pay invoice
+        if let Err(_err) = uuid::Uuid::from_str(payment_id) {
+            tracing::warn!("Could not check status of payment, no payment id");
+            return Ok(PayInvoiceResponse {
+                payment_lookup_id: payment_id.to_string(),
+                payment_preimage: None,
+                status: MeltQuoteState::Unknown,
+                total_spent: Amount::ZERO,
+                unit: CurrencyUnit::Sat,
+            });
+        }
+
         let res = self.phoenixd_api.get_outgoing_invoice(payment_id).await;
 
         let state = match res {

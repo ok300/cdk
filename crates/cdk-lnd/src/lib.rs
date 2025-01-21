@@ -18,10 +18,7 @@ use cdk::cdk_lightning::{
     self, CreateInvoiceResponse, MintLightning, PayInvoiceResponse, PaymentQuoteResponse, Settings,
 };
 use cdk::mint::FeeReserve;
-use cdk::nuts::{
-    CurrencyUnit, MeltMethodSettings, MeltQuoteBolt11Request, MeltQuoteState, MintMethodSettings,
-    MintQuoteState,
-};
+use cdk::nuts::{CurrencyUnit, MeltQuoteBolt11Request, MeltQuoteState, MintQuoteState};
 use cdk::util::{hex, unix_time};
 use cdk::{mint, Bolt11Invoice};
 use error::Error;
@@ -43,8 +40,6 @@ pub struct Lnd {
     macaroon_file: PathBuf,
     client: Arc<Mutex<Client>>,
     fee_reserve: FeeReserve,
-    mint_settings: MintMethodSettings,
-    melt_settings: MeltMethodSettings,
     wait_invoice_cancel_token: CancellationToken,
     wait_invoice_is_active: Arc<AtomicBool>,
 }
@@ -56,8 +51,6 @@ impl Lnd {
         cert_file: PathBuf,
         macaroon_file: PathBuf,
         fee_reserve: FeeReserve,
-        mint_settings: MintMethodSettings,
-        melt_settings: MeltMethodSettings,
     ) -> Result<Self, Error> {
         let client = fedimint_tonic_lnd::connect(address.to_string(), &cert_file, &macaroon_file)
             .await
@@ -72,8 +65,6 @@ impl Lnd {
             macaroon_file,
             client: Arc::new(Mutex::new(client)),
             fee_reserve,
-            mint_settings,
-            melt_settings,
             wait_invoice_cancel_token: CancellationToken::new(),
             wait_invoice_is_active: Arc::new(AtomicBool::new(false)),
         })
@@ -86,10 +77,8 @@ impl MintLightning for Lnd {
 
     fn get_settings(&self) -> Settings {
         Settings {
-            mpp: true,
+            mpp: false,
             unit: CurrencyUnit::Msat,
-            mint_settings: self.mint_settings,
-            melt_settings: self.melt_settings,
             invoice_description: true,
         }
     }
@@ -175,16 +164,9 @@ impl MintLightning for Lnd {
         &self,
         melt_quote_request: &MeltQuoteBolt11Request,
     ) -> Result<PaymentQuoteResponse, Self::Err> {
-        let invoice_amount_msat = melt_quote_request
-            .request
-            .amount_milli_satoshis()
-            .ok_or(Error::UnknownInvoiceAmount)?;
+        let amount = melt_quote_request.amount_msat()?;
 
-        let amount = to_unit(
-            invoice_amount_msat,
-            &CurrencyUnit::Msat,
-            &melt_quote_request.unit,
-        )?;
+        let amount = amount / MSAT_IN_SAT.into();
 
         let relative_fee_reserve =
             (self.fee_reserve.percent_fee_reserve * u64::from(amount) as f32) as u64;
@@ -207,10 +189,20 @@ impl MintLightning for Lnd {
     async fn pay_invoice(
         &self,
         melt_quote: mint::MeltQuote,
-        partial_amount: Option<Amount>,
+        _partial_amount: Option<Amount>,
         max_fee: Option<Amount>,
     ) -> Result<PayInvoiceResponse, Self::Err> {
         let payment_request = melt_quote.request;
+
+        let amount_msat: u64 = match melt_quote.msat_to_pay {
+            Some(amount_msat) => amount_msat.into(),
+            None => {
+                let bolt11 = Bolt11Invoice::from_str(&payment_request)?;
+                bolt11
+                    .amount_milli_satoshis()
+                    .ok_or(Error::UnknownInvoiceAmount)?
+            }
+        };
 
         let pay_req = fedimint_tonic_lnd::lnrpc::SendRequest {
             payment_request,
@@ -219,13 +211,7 @@ impl MintLightning for Lnd {
 
                 FeeLimit { limit: Some(limit) }
             }),
-            amt_msat: partial_amount
-                .map(|a| {
-                    let msat = to_unit(a, &melt_quote.unit, &CurrencyUnit::Msat).unwrap();
-
-                    u64::from(msat) as i64
-                })
-                .unwrap_or_default(),
+            amt_msat: amount_msat as i64,
             ..Default::default()
         };
 

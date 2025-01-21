@@ -5,17 +5,16 @@ use std::path::Path;
 use std::str::FromStr;
 
 use async_trait::async_trait;
-use cdk::amount::Amount;
-use cdk::cdk_database::{self, WalletDatabase};
-use cdk::mint_url::MintUrl;
-use cdk::nuts::{
-    CurrencyUnit, Id, KeySetInfo, Keys, MeltQuoteState, MintInfo, MintQuoteState, Proof, PublicKey,
+use cdk_common::common::ProofInfo;
+use cdk_common::database::WalletDatabase;
+use cdk_common::mint_url::MintUrl;
+use cdk_common::nuts::{MeltQuoteState, MintQuoteState};
+use cdk_common::secret::Secret;
+use cdk_common::wallet::{self, MintQuote};
+use cdk_common::{
+    database, Amount, CurrencyUnit, Id, KeySetInfo, Keys, MintInfo, Proof, PublicKey, SecretKey,
     SpendingConditions, State,
 };
-use cdk::secret::Secret;
-use cdk::types::ProofInfo;
-use cdk::wallet;
-use cdk::wallet::MintQuote;
 use error::Error;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqliteRow};
 use sqlx::{ConnectOptions, Row};
@@ -54,7 +53,7 @@ impl WalletSqliteDatabase {
             .expect("Could not run migrations");
     }
 
-    async fn set_proof_state(&self, y: PublicKey, state: State) -> Result<(), cdk_database::Error> {
+    async fn set_proof_state(&self, y: PublicKey, state: State) -> Result<(), database::Error> {
         sqlx::query(
             r#"
     UPDATE proof
@@ -74,7 +73,7 @@ impl WalletSqliteDatabase {
 
 #[async_trait]
 impl WalletDatabase for WalletSqliteDatabase {
-    type Err = cdk_database::Error;
+    type Err = database::Error;
 
     #[instrument(skip(self, mint_info))]
     async fn add_mint(
@@ -91,6 +90,7 @@ impl WalletDatabase for WalletSqliteDatabase {
             contact,
             nuts,
             icon_url,
+            urls,
             motd,
             time,
         ) = match mint_info {
@@ -104,6 +104,7 @@ impl WalletDatabase for WalletSqliteDatabase {
                     contact,
                     nuts,
                     icon_url,
+                    urls,
                     motd,
                     time,
                 } = mint_info;
@@ -117,18 +118,21 @@ impl WalletDatabase for WalletSqliteDatabase {
                     contact.map(|c| serde_json::to_string(&c).ok()),
                     serde_json::to_string(&nuts).ok(),
                     icon_url,
+                    urls.map(|c| serde_json::to_string(&c).ok()),
                     motd,
                     time,
                 )
             }
-            None => (None, None, None, None, None, None, None, None, None, None),
+            None => (
+                None, None, None, None, None, None, None, None, None, None, None,
+            ),
         };
 
         sqlx::query(
             r#"
 INSERT OR REPLACE INTO mint
-(mint_url, name, pubkey, version, description, description_long, contact, nuts, icon_url, motd, mint_time)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+(mint_url, name, pubkey, version, description, description_long, contact, nuts, icon_url, urls, motd, mint_time)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         "#,
         )
         .bind(mint_url.to_string())
@@ -140,6 +144,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         .bind(contact)
         .bind(nuts)
         .bind(icon_url)
+        .bind(urls)
         .bind(motd)
         .bind(time.map(|v| v as i64))
         .execute(&self.pool)
@@ -254,10 +259,15 @@ FROM mint
         for keyset in keysets {
             sqlx::query(
                 r#"
-INSERT OR REPLACE INTO keyset
-(mint_url, id, unit, active, input_fee_ppk)
-VALUES (?, ?, ?, ?, ?);
-        "#,
+    INSERT INTO keyset
+    (mint_url, id, unit, active, input_fee_ppk)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+        mint_url = excluded.mint_url,
+        unit = excluded.unit,
+        active = excluded.active,
+        input_fee_ppk = excluded.input_fee_ppk;
+    "#,
             )
             .bind(mint_url.to_string())
             .bind(keyset.id.to_string())
@@ -336,8 +346,8 @@ WHERE id=?
         sqlx::query(
             r#"
 INSERT OR REPLACE INTO mint_quote
-(id, mint_url, amount, unit, request, state, expiry)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+(id, mint_url, amount, unit, request, state, expiry, secret_key)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         "#,
         )
         .bind(quote.id.to_string())
@@ -347,6 +357,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
         .bind(quote.request)
         .bind(quote.state.to_string())
         .bind(quote.expiry as i64)
+        .bind(quote.secret_key.map(|p| p.to_string()))
         .execute(&self.pool)
         .await
         .map_err(Error::from)?;
@@ -669,18 +680,22 @@ FROM proof;
 
     #[instrument(skip(self), fields(keyset_id = %keyset_id))]
     async fn increment_keyset_counter(&self, keyset_id: &Id, count: u32) -> Result<(), Self::Err> {
+        let mut transaction = self.pool.begin().await.map_err(Error::from)?;
+
         sqlx::query(
             r#"
 UPDATE keyset
-SET counter = counter + ?
-WHERE id IS ?;
+SET counter=counter+?
+WHERE id=?;
         "#,
         )
-        .bind(count)
+        .bind(count as i64)
         .bind(keyset_id.to_string())
-        .execute(&self.pool)
+        .execute(&mut transaction)
         .await
         .map_err(Error::from)?;
+
+        transaction.commit().await.map_err(Error::from)?;
 
         Ok(())
     }
@@ -775,6 +790,7 @@ fn sqlite_row_to_mint_info(row: &SqliteRow) -> Result<MintInfo, Error> {
     let row_nuts: Option<String> = row.try_get("nuts").map_err(Error::from)?;
     let icon_url: Option<String> = row.try_get("icon_url").map_err(Error::from)?;
     let motd: Option<String> = row.try_get("motd").map_err(Error::from)?;
+    let row_urls: Option<String> = row.try_get("urls").map_err(Error::from)?;
     let time: Option<i64> = row.try_get("mint_time").map_err(Error::from)?;
 
     Ok(MintInfo {
@@ -788,6 +804,7 @@ fn sqlite_row_to_mint_info(row: &SqliteRow) -> Result<MintInfo, Error> {
             .and_then(|n| serde_json::from_str(&n).ok())
             .unwrap_or_default(),
         icon_url,
+        urls: row_urls.and_then(|c| serde_json::from_str(&c).ok()),
         motd,
         time: time.map(|t| t as u64),
     })
@@ -815,8 +832,13 @@ fn sqlite_row_to_mint_quote(row: &SqliteRow) -> Result<MintQuote, Error> {
     let row_request: String = row.try_get("request").map_err(Error::from)?;
     let row_state: String = row.try_get("state").map_err(Error::from)?;
     let row_expiry: i64 = row.try_get("expiry").map_err(Error::from)?;
+    let row_secret: Option<String> = row.try_get("secret_key").map_err(Error::from)?;
 
     let state = MintQuoteState::from_str(&row_state)?;
+
+    let secret_key = row_secret
+        .map(|key| SecretKey::from_str(&key))
+        .transpose()?;
 
     Ok(MintQuote {
         id: row_id,
@@ -826,6 +848,7 @@ fn sqlite_row_to_mint_quote(row: &SqliteRow) -> Result<MintQuote, Error> {
         request: row_request,
         state,
         expiry: row_expiry as u64,
+        secret_key,
     })
 }
 

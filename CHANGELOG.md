@@ -20,7 +20,46 @@
 ### Removed
 
 -->
-#[Unreleased]
+
+#[Unrelased]
+
+### Changed
+
+### Added
+* `Token::to_raw_bytes` serializes generic token to raw bytes ([lollerfirst]).
+* `Token::try_from` for `Vec<u8>` constructs a generic token from raw bytes ([lollerfirst]).
+* `TokenV4::to_raw_bytes()` serializes a TokenV4 to raw bytes following the spec ([lollerfirst]).
+* `Wallet::receive_raw` which receives raw binary tokens ([lollerfirst]).
+
+### Fixed
+
+### Removed
+
+#[0.6.1]
+### Added
+cdk-mintd: Get work-dir from env var ([thesimplekid])
+
+#[0.6.0]
+
+### Changed
+cdk: Enforce `quote_id` to uuid type in mint ([tdelabro]).
+cdk: Refactor wallet mint connector ([ok300]).
+
+### Added
+cdk: `NUT19` Settings in `NUT06` info ([thesimplekid]).
+cdk: `NUT17` Websocket support for wallet ([crodas]).
+cdk-axum: Redis cache backend ([crodas]).
+cdk-mints: Get mint settings from env vars ([thesimplekid]).
+cdk-axum: HTTP compression support ([ok300]).
+
+### Fixed
+cdk-sqlite: keyset counter was overwritten when keyset was fetched from mint ([thesimplekid]).
+cdk-cli: on `mint` use `unit` from cli args ([thesimplekid]).
+cdk-cli: on `restore` create `wallet` if it does not exist ([thesimplekid]).
+cdk: Signaling support for optional nuts ([thesimpekid]).
+cdk-phd: Check payment has valid uuis ([thesimplekid]).
+
+#[0.5.0]
 ### Changed
 - cdk: Bump `bitcoin` to `0.32.2` ([prusnak]).
 - cdk: Bump `lightning-invoice` to `0.32.2` ([prusnak]).
@@ -36,6 +75,7 @@
 - cdk: Use `MintUrl` directly in wallet client ([ok300]).
 - cdk-cli: Change cdk-cli pay command to melt ([mubarak23]).
 - cdk: Rename `Wallet::get_proofs` to `Wallet::get_unspent_proofs` ([ok300]).
+- cdk: `Id` to `u32` changed from `TryFrom` to `From` ([vnrpc]). 
 
 
 ### Added
@@ -47,10 +87,11 @@
 - cdk: Add description for mint quote ([lollerfirst]).
 - cdk-axum: Add cache to some endpoints ([lollerfirst]).
 - cdk: Add Proofs trait ([ok300]).
-- cdk: Wallet verifiys keyset id when first fetching keys ([thesimplekid]).
+- cdk: Wallet verifies keyset id when first fetching keys ([thesimplekid]).
 - cdk-mind: Add swagger docs ([ok300]).
 - cdk: NUT18 payment request support ([thesimplekid]).
 - cdk: Add `Wallet::get_proofs_with` ([ok300]).
+- cdk: Mint NUT-17 Websocket support ([crodas]).
 
 ### Removed
 - cdk: Remove `MintMeltSettings` since it is no longer used ([lollerfirst]).
@@ -198,4 +239,7 @@ Additionally, this release introduces a Mint binary cdk-mintd that uses the cdk-
 [lollerfirst]: https://github.com/lollerfirst
 [prusnak]: https://github.com/prusnak
 [mubarak23]: https://github.com/mubarak23
+[vnprc]: https://github.com/vnprc
+[crodas]: https://github.com/crodas
+[tdelabro]: https://github.com/tdelabro
 

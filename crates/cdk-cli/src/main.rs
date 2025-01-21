@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
     let args: Cli = Cli::parse();
     let default_filter = args.log_level;
 
-    let sqlx_filter = "sqlx=warn";
+    let sqlx_filter = "sqlx=warn,hyper_util=warn,reqwest=warn";
 
     let env_filter = EnvFilter::new(format!("{},{}", default_filter, sqlx_filter));
 
@@ -132,7 +132,9 @@ async fn main() -> Result<()> {
             let random_bytes: [u8; 32] = rng.gen();
 
             let mnemonic = Mnemonic::from_entropy(&random_bytes)?;
-            tracing::info!("Using randomly generated seed you will not be able to restore");
+            tracing::info!("Creating new seed");
+
+            fs::write(seed_path, mnemonic.to_string())?;
 
             mnemonic
         }
@@ -142,16 +144,17 @@ async fn main() -> Result<()> {
 
     let mints = localstore.get_mints().await?;
 
-    for (mint, _) in mints {
+    for (mint_url, _) in mints {
         let mut wallet = Wallet::new(
-            &mint.to_string(),
+            &mint_url.to_string(),
             cdk::nuts::CurrencyUnit::Sat,
             localstore.clone(),
             &mnemonic.to_seed_normalized(""),
             None,
         )?;
         if let Some(proxy_url) = args.proxy.as_ref() {
-            wallet.set_client(HttpClient::with_proxy(proxy_url.clone(), None, true)?);
+            let http_client = HttpClient::with_proxy(mint_url, proxy_url.clone(), None, true)?;
+            wallet.set_client(http_client);
         }
 
         wallets.push(wallet);
@@ -201,7 +204,13 @@ async fn main() -> Result<()> {
             sub_commands::burn::burn(&multi_mint_wallet, sub_command_args).await
         }
         Commands::Restore(sub_command_args) => {
-            sub_commands::restore::restore(&multi_mint_wallet, sub_command_args).await
+            sub_commands::restore::restore(
+                &multi_mint_wallet,
+                &mnemonic.to_seed_normalized(""),
+                localstore,
+                sub_command_args,
+            )
+            .await
         }
         Commands::UpdateMintUrl(sub_command_args) => {
             sub_commands::update_mint_url::update_mint_url(&multi_mint_wallet, sub_command_args)

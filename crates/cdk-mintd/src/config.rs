@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use cdk::nuts::{CurrencyUnit, PublicKey};
 use cdk::Amount;
+use cdk_axum::cache;
 use config::{Config, ConfigError, File};
 use serde::{Deserialize, Serialize};
 
@@ -11,10 +12,9 @@ pub struct Info {
     pub listen_host: String,
     pub listen_port: u16,
     pub mnemonic: String,
-    pub seconds_quote_is_valid_for: Option<u64>,
-    pub seconds_to_cache_requests_for: Option<u64>,
-    pub seconds_to_extend_cache_by: Option<u64>,
     pub input_fee_ppk: Option<u64>,
+
+    pub http_cache: cache::Config,
 
     /// When this is set to true, the mint exposes a Swagger UI for it's API at
     /// `[listen_host]:[listen_port]/swagger-ui`
@@ -27,6 +27,7 @@ pub struct Info {
 #[serde(rename_all = "lowercase")]
 pub enum LnBackend {
     #[default]
+    None,
     Cln,
     Strike,
     LNbits,
@@ -35,12 +36,43 @@ pub enum LnBackend {
     Lnd,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+impl std::str::FromStr for LnBackend {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "cln" => Ok(LnBackend::Cln),
+            "strike" => Ok(LnBackend::Strike),
+            "lnbits" => Ok(LnBackend::LNbits),
+            "fakewallet" => Ok(LnBackend::FakeWallet),
+            "phoenixd" => Ok(LnBackend::Phoenixd),
+            "lnd" => Ok(LnBackend::Lnd),
+            _ => Err(format!("Unknown Lightning backend: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ln {
     pub ln_backend: LnBackend,
     pub invoice_description: Option<String>,
-    pub fee_percent: f32,
-    pub reserve_fee_min: Amount,
+    pub min_mint: Amount,
+    pub max_mint: Amount,
+    pub min_melt: Amount,
+    pub max_melt: Amount,
+}
+
+impl Default for Ln {
+    fn default() -> Self {
+        Ln {
+            ln_backend: LnBackend::default(),
+            invoice_description: None,
+            min_mint: 1.into(),
+            max_mint: 500_000.into(),
+            min_melt: 1.into(),
+            max_melt: 500_000.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -54,11 +86,17 @@ pub struct LNbits {
     pub admin_api_key: String,
     pub invoice_api_key: String,
     pub lnbits_api: String,
+    pub fee_percent: f32,
+    pub reserve_fee_min: Amount,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Cln {
     pub rpc_path: PathBuf,
+    #[serde(default)]
+    pub bolt12: bool,
+    pub fee_percent: f32,
+    pub reserve_fee_min: Amount,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -66,25 +104,49 @@ pub struct Lnd {
     pub address: String,
     pub cert_file: PathBuf,
     pub macaroon_file: PathBuf,
+    pub fee_percent: f32,
+    pub reserve_fee_min: Amount,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Phoenixd {
     pub api_password: String,
     pub api_url: String,
+    pub bolt12: bool,
+    pub fee_percent: f32,
+    pub reserve_fee_min: Amount,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FakeWallet {
     pub supported_units: Vec<CurrencyUnit>,
+    pub fee_percent: f32,
+    pub reserve_fee_min: Amount,
+    #[serde(default = "default_min_delay_time")]
+    pub min_delay_time: u64,
+    #[serde(default = "default_max_delay_time")]
+    pub max_delay_time: u64,
 }
 
 impl Default for FakeWallet {
     fn default() -> Self {
         Self {
             supported_units: vec![CurrencyUnit::Sat],
+            fee_percent: 0.02,
+            reserve_fee_min: 2.into(),
+            min_delay_time: 1,
+            max_delay_time: 3,
         }
     }
+}
+
+// Helper functions to provide default values
+fn default_min_delay_time() -> u64 {
+    1
+}
+
+fn default_max_delay_time() -> u64 {
+    3
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
@@ -93,6 +155,18 @@ pub enum DatabaseEngine {
     #[default]
     Sqlite,
     Redb,
+}
+
+impl std::str::FromStr for DatabaseEngine {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "sqlite" => Ok(DatabaseEngine::Sqlite),
+            "redb" => Ok(DatabaseEngine::Redb),
+            _ => Err(format!("Unknown database engine: {}", s)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -137,7 +211,10 @@ pub struct MintInfo {
 
 impl Settings {
     #[must_use]
-    pub fn new(config_file_name: &Option<PathBuf>) -> Self {
+    pub fn new<P>(config_file_name: Option<P>) -> Self
+    where
+        P: Into<PathBuf>,
+    {
         let default_settings = Self::default();
         // attempt to construct settings with file
         let from_file = Self::new_from_default(&default_settings, config_file_name);
@@ -150,17 +227,20 @@ impl Settings {
         }
     }
 
-    fn new_from_default(
+    fn new_from_default<P>(
         default: &Settings,
-        config_file_name: &Option<PathBuf>,
-    ) -> Result<Self, ConfigError> {
+        config_file_name: Option<P>,
+    ) -> Result<Self, ConfigError>
+    where
+        P: Into<PathBuf>,
+    {
         let mut default_config_file_name = home::home_dir()
             .ok_or(ConfigError::NotFound("Config Path".to_string()))?
             .join("cashu-rs-mint");
 
         default_config_file_name.push("config.toml");
         let config: String = match config_file_name {
-            Some(value) => value.clone().to_string_lossy().to_string(),
+            Some(value) => value.into().to_string_lossy().to_string(),
             None => default_config_file_name.to_string_lossy().to_string(),
         };
         let builder = Config::builder();
@@ -173,12 +253,33 @@ impl Settings {
         let settings: Settings = config.try_deserialize()?;
 
         match settings.ln.ln_backend {
-            LnBackend::Cln => assert!(settings.cln.is_some()),
-            LnBackend::Strike => assert!(settings.strike.is_some()),
-            LnBackend::LNbits => assert!(settings.lnbits.is_some()),
-            LnBackend::Phoenixd => assert!(settings.phoenixd.is_some()),
-            LnBackend::Lnd => assert!(settings.lnd.is_some()),
-            LnBackend::FakeWallet => (),
+            LnBackend::None => panic!("Ln backend must be set"),
+            LnBackend::Cln => assert!(
+                settings.cln.is_some(),
+                "CLN backend requires a valid config."
+            ),
+            LnBackend::Strike => assert!(
+                settings.strike.is_some(),
+                "Strike backend requires a valid config."
+            ),
+            LnBackend::LNbits => assert!(
+                settings.lnbits.is_some(),
+                "LNbits backend requires a valid config"
+            ),
+            LnBackend::Phoenixd => assert!(
+                settings.phoenixd.is_some(),
+                "Phoenixd backend requires a valid config"
+            ),
+            LnBackend::Lnd => {
+                assert!(
+                    settings.lnd.is_some(),
+                    "LND backend requires a valid config."
+                )
+            }
+            LnBackend::FakeWallet => assert!(
+                settings.fake_wallet.is_some(),
+                "FakeWallet backend requires a valid config."
+            ),
         }
 
         Ok(settings)

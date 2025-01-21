@@ -15,7 +15,8 @@ cleanup() {
     
     # Kill processes
     lncli --lnddir="$cdk_itests/lnd" --network=regtest stop
-    lightning-cli --regtest --lightning-dir="$cdk_itests/cln/" stop
+    lightning-cli --regtest --lightning-dir="$cdk_itests/one/" stop
+    lightning-cli --regtest --lightning-dir="$cdk_itests/two/" stop
     bitcoin-cli --datadir="$cdk_itests/bitcoin"  -rpcuser=testuser -rpcpassword=testpass -rpcport=18443 stop
 
     # Remove the temporary directory
@@ -45,8 +46,8 @@ echo "Temp directory created: $cdk_itests"
 export MINT_DATABASE="$1";
 
 cargo build -p cdk-integration-tests 
-cargo build --bin cdk-integration-tests 
-cargo run --bin cdk-integration-tests &
+cargo build --bin regtest_mint 
+cargo run --bin regtest_mint &
 # Capture its PID
 CDK_ITEST_MINT_BIN_PID=$!
 
@@ -82,6 +83,9 @@ done
 
 # Run cargo test
 cargo test -p cdk-integration-tests --test regtest
+
+# Run cargo test with the http_subscription feature
+cargo test -p cdk-integration-tests --test regtest --features http_subscription
 
 # Capture the exit status of cargo test
 test_status=$?

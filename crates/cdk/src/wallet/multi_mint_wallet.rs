@@ -4,11 +4,10 @@
 //! pairs
 
 use std::collections::{BTreeMap, HashMap};
-use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
+use cdk_common::wallet::WalletKey;
 use tokio::sync::Mutex;
 use tracing::instrument;
 
@@ -16,7 +15,7 @@ use super::types::SendKind;
 use super::Error;
 use crate::amount::SplitTarget;
 use crate::mint_url::MintUrl;
-use crate::nuts::{CurrencyUnit, Proof, SecretKey, SpendingConditions, Token};
+use crate::nuts::{CurrencyUnit, MeltOptions, Proof, Proofs, SecretKey, SpendingConditions, Token};
 use crate::types::Melted;
 use crate::wallet::types::MintQuote;
 use crate::{Amount, Wallet};
@@ -28,26 +27,6 @@ pub struct MultiMintWallet {
     pub wallets: Arc<Mutex<BTreeMap<WalletKey, Wallet>>>,
 }
 
-/// Wallet Key
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct WalletKey {
-    mint_url: MintUrl,
-    unit: CurrencyUnit,
-}
-
-impl fmt::Display for WalletKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "mint_url: {}, unit: {}", self.mint_url, self.unit,)
-    }
-}
-
-impl WalletKey {
-    /// Create new [`WalletKey`]
-    pub fn new(mint_url: MintUrl, unit: CurrencyUnit) -> Self {
-        Self { mint_url, unit }
-    }
-}
-
 impl MultiMintWallet {
     /// New Multimint wallet
     pub fn new(wallets: Vec<Wallet>) -> Self {
@@ -55,7 +34,7 @@ impl MultiMintWallet {
             wallets: Arc::new(Mutex::new(
                 wallets
                     .into_iter()
-                    .map(|w| (WalletKey::new(w.mint_url.clone(), w.unit), w))
+                    .map(|w| (WalletKey::new(w.mint_url.clone(), w.unit.clone()), w))
                     .collect(),
             )),
         }
@@ -64,7 +43,7 @@ impl MultiMintWallet {
     /// Add wallet to MultiMintWallet
     #[instrument(skip(self, wallet))]
     pub async fn add_wallet(&self, wallet: Wallet) {
-        let wallet_key = WalletKey::new(wallet.mint_url.clone(), wallet.unit);
+        let wallet_key = WalletKey::new(wallet.mint_url.clone(), wallet.unit.clone());
 
         let mut wallets = self.wallets.lock().await;
 
@@ -126,7 +105,7 @@ impl MultiMintWallet {
 
         for (WalletKey { mint_url, unit: u }, wallet) in self.wallets.lock().await.iter() {
             let wallet_proofs = wallet.get_unspent_proofs().await?;
-            mint_proofs.insert(mint_url.clone(), (wallet_proofs, *u));
+            mint_proofs.insert(mint_url.clone(), (wallet_proofs, u.clone()));
         }
         Ok(mint_proofs)
     }
@@ -198,7 +177,7 @@ impl MultiMintWallet {
                     let amount = wallet.check_all_mint_quotes().await?;
 
                     amount_minted
-                        .entry(wallet.unit)
+                        .entry(wallet.unit.clone())
                         .and_modify(|b| *b += amount)
                         .or_insert(amount);
                 }
@@ -215,7 +194,7 @@ impl MultiMintWallet {
         wallet_key: &WalletKey,
         quote_id: &str,
         conditions: Option<SpendingConditions>,
-    ) -> Result<Amount, Error> {
+    ) -> Result<Proofs, Error> {
         let wallet = self
             .get_wallet(wallet_key)
             .await
@@ -246,7 +225,7 @@ impl MultiMintWallet {
         let mint_url = token_data.mint_url()?;
 
         // Check that all mints in tokes have wallets
-        let wallet_key = WalletKey::new(mint_url.clone(), unit);
+        let wallet_key = WalletKey::new(mint_url.clone(), unit.clone());
         if !self.has(&wallet_key).await {
             return Err(Error::UnknownWallet(wallet_key.clone()));
         }
@@ -281,6 +260,7 @@ impl MultiMintWallet {
     pub async fn pay_invoice_for_wallet(
         &self,
         bolt11: &str,
+        options: Option<MeltOptions>,
         wallet_key: &WalletKey,
         max_fee: Option<Amount>,
     ) -> Result<Melted, Error> {
@@ -289,7 +269,7 @@ impl MultiMintWallet {
             .await
             .ok_or(Error::UnknownWallet(wallet_key.clone()))?;
 
-        let quote = wallet.melt_quote(bolt11.to_string(), None).await?;
+        let quote = wallet.melt_quote(bolt11.to_string(), options).await?;
         if let Some(max_fee) = max_fee {
             if quote.fee_reserve > max_fee {
                 return Err(Error::MaxFeeExceeded);

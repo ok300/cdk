@@ -2,13 +2,13 @@ use std::collections::HashSet;
 
 use tracing::instrument;
 
+use crate::amount::SplitTarget;
 use crate::nuts::nut00::ProofsMethods;
-use crate::{
-    amount::SplitTarget,
-    nuts::{Proof, ProofState, Proofs, PublicKey, SpendingConditions, State},
-    types::ProofInfo,
-    Amount, Error, Wallet,
+use crate::nuts::{
+    CheckStateRequest, Proof, ProofState, Proofs, PublicKey, SpendingConditions, State,
 };
+use crate::types::ProofInfo;
+use crate::{Amount, Error, Wallet};
 
 impl Wallet {
     /// Get unspent proofs for mint
@@ -40,7 +40,7 @@ impl Wallet {
             .localstore
             .get_proofs(
                 Some(self.mint_url.clone()),
-                Some(self.unit),
+                Some(self.unit.clone()),
                 state,
                 spending_conditions,
             )
@@ -65,7 +65,7 @@ impl Wallet {
 
         let spendable = self
             .client
-            .post_check_state(self.mint_url.clone(), proof_ys)
+            .post_check_state(CheckStateRequest { ys: proof_ys })
             .await?
             .states;
 
@@ -86,7 +86,7 @@ impl Wallet {
     pub async fn check_proofs_spent(&self, proofs: Proofs) -> Result<Vec<ProofState>, Error> {
         let spendable = self
             .client
-            .post_check_state(self.mint_url.clone(), proofs.ys()?)
+            .post_check_state(CheckStateRequest { ys: proofs.ys()? })
             .await?;
         let spent_ys: Vec<_> = spendable
             .states
@@ -111,7 +111,7 @@ impl Wallet {
             .localstore
             .get_proofs(
                 Some(self.mint_url.clone()),
-                Some(self.unit),
+                Some(self.unit.clone()),
                 Some(vec![State::Pending, State::Reserved]),
                 None,
             )
@@ -126,7 +126,7 @@ impl Wallet {
             .await?;
 
         // Both `State::Pending` and `State::Unspent` should be included in the pending
-        // table. This is because a proof that has been crated to send will be
+        // table. This is because a proof that has been created to send will be
         // stored in the pending table in order to avoid accidentally double
         // spending but to allow it to be explicitly reclaimed
         let pending_states: HashSet<PublicKey> = states

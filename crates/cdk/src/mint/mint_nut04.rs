@@ -1,26 +1,30 @@
 use tracing::instrument;
-
-use crate::{nuts::MintQuoteState, types::LnKey, util::unix_time, Amount, Error};
+use uuid::Uuid;
 
 use super::{
     nut04, CurrencyUnit, Mint, MintQuote, MintQuoteBolt11Request, MintQuoteBolt11Response,
-    PaymentMethod, PublicKey,
+    NotificationPayload, PaymentMethod, PublicKey,
 };
+use crate::nuts::MintQuoteState;
+use crate::types::LnKey;
+use crate::util::unix_time;
+use crate::{Amount, Error};
 
 impl Mint {
     /// Checks that minting is enabled, request is supported unit and within range
     fn check_mint_request_acceptable(
         &self,
         amount: Amount,
-        unit: CurrencyUnit,
+        unit: &CurrencyUnit,
     ) -> Result<(), Error> {
-        let nut04 = &self.mint_info.nuts.nut04;
+        let mint_info = self.mint_info();
+        let nut04 = &mint_info.nuts.nut04;
 
         if nut04.disabled {
             return Err(Error::MintingDisabled);
         }
 
-        match nut04.get_settings(&unit, &PaymentMethod::Bolt11) {
+        match nut04.get_settings(unit, &PaymentMethod::Bolt11) {
             Some(settings) => {
                 if settings
                     .max_amount
@@ -57,25 +61,26 @@ impl Mint {
     pub async fn get_mint_bolt11_quote(
         &self,
         mint_quote_request: MintQuoteBolt11Request,
-    ) -> Result<MintQuoteBolt11Response, Error> {
+    ) -> Result<MintQuoteBolt11Response<Uuid>, Error> {
         let MintQuoteBolt11Request {
             amount,
             unit,
             description,
+            pubkey,
         } = mint_quote_request;
 
-        self.check_mint_request_acceptable(amount, unit)?;
+        self.check_mint_request_acceptable(amount, &unit)?;
 
         let ln = self
             .ln
-            .get(&LnKey::new(unit, PaymentMethod::Bolt11))
+            .get(&LnKey::new(unit.clone(), PaymentMethod::Bolt11))
             .ok_or_else(|| {
                 tracing::info!("Bolt11 mint request for unsupported unit");
 
                 Error::UnitUnsupported
             })?;
 
-        let quote_expiry = unix_time() + self.quote_ttl.mint_ttl;
+        let quote_expiry = unix_time() + self.config.quote_ttl().mint_ttl;
 
         if description.is_some() && !ln.get_settings().invoice_description {
             tracing::error!("Backend does not support invoice description");
@@ -96,12 +101,13 @@ impl Mint {
             })?;
 
         let quote = MintQuote::new(
-            self.mint_url.clone(),
+            self.config.mint_url(),
             create_invoice_response.request.to_string(),
-            unit,
+            unit.clone(),
             amount,
             create_invoice_response.expiry.unwrap_or(0),
             create_invoice_response.request_lookup_id.clone(),
+            pubkey,
         );
 
         tracing::debug!(
@@ -114,12 +120,20 @@ impl Mint {
 
         self.localstore.add_mint_quote(quote.clone()).await?;
 
-        Ok(quote.into())
+        let quote: MintQuoteBolt11Response<Uuid> = quote.into();
+
+        self.pubsub_manager
+            .broadcast(NotificationPayload::MintQuoteBolt11Response(quote.clone()));
+
+        Ok(quote)
     }
 
     /// Check mint quote
     #[instrument(skip(self))]
-    pub async fn check_mint_quote(&self, quote_id: &str) -> Result<MintQuoteBolt11Response, Error> {
+    pub async fn check_mint_quote(
+        &self,
+        quote_id: &Uuid,
+    ) -> Result<MintQuoteBolt11Response<Uuid>, Error> {
         let quote = self
             .localstore
             .get_mint_quote(quote_id)
@@ -139,6 +153,7 @@ impl Mint {
             request: quote.request,
             state,
             expiry: Some(quote.expiry),
+            pubkey: quote.pubkey,
         })
     }
 
@@ -180,7 +195,7 @@ impl Mint {
 
     /// Remove mint quote
     #[instrument(skip_all)]
-    pub async fn remove_mint_quote(&self, quote_id: &str) -> Result<(), Error> {
+    pub async fn remove_mint_quote(&self, quote_id: &Uuid) -> Result<(), Error> {
         self.localstore.remove_mint_quote(quote_id).await?;
 
         Ok(())
@@ -201,7 +216,6 @@ impl Mint {
                 "Received payment notification for mint quote {}",
                 mint_quote.id
             );
-
             if mint_quote.state != MintQuoteState::Issued
                 && mint_quote.state != MintQuoteState::Paid
             {
@@ -233,6 +247,9 @@ impl Mint {
                     mint_quote.state
                 );
             }
+
+            self.pubsub_manager
+                .mint_quote_bolt11_status(mint_quote, MintQuoteState::Paid);
         }
         Ok(())
     }
@@ -241,16 +258,14 @@ impl Mint {
     #[instrument(skip_all)]
     pub async fn process_mint_request(
         &self,
-        mint_request: nut04::MintBolt11Request,
+        mint_request: nut04::MintBolt11Request<Uuid>,
     ) -> Result<nut04::MintBolt11Response, Error> {
-        if self
-            .localstore
-            .get_mint_quote(&mint_request.quote)
-            .await?
-            .is_none()
-        {
-            return Err(Error::UnknownQuote);
-        }
+        let mint_quote =
+            if let Some(mint_quote) = self.localstore.get_mint_quote(&mint_request.quote).await? {
+                mint_quote
+            } else {
+                return Err(Error::UnknownQuote);
+            };
 
         let state = self
             .localstore
@@ -268,6 +283,12 @@ impl Mint {
                 return Err(Error::IssuedQuote);
             }
             MintQuoteState::Paid => (),
+        }
+
+        // If the there is a public key provoided in mint quote request
+        // verify the signature is provided for the mint request
+        if let Some(pubkey) = mint_quote.pubkey {
+            mint_request.verify_signature(pubkey)?;
         }
 
         let blinded_messages: Vec<PublicKey> = mint_request
@@ -295,6 +316,7 @@ impl Mint {
                 .update_mint_quote_state(&mint_request.quote, MintQuoteState::Paid)
                 .await
                 .unwrap();
+
             return Err(Error::BlindedMessageAlreadySigned);
         }
 
@@ -313,13 +335,16 @@ impl Mint {
                     .map(|p| p.blinded_secret)
                     .collect::<Vec<PublicKey>>(),
                 &blind_signatures,
-                Some(mint_request.quote.clone()),
+                Some(mint_request.quote),
             )
             .await?;
 
         self.localstore
             .update_mint_quote_state(&mint_request.quote, MintQuoteState::Issued)
             .await?;
+
+        self.pubsub_manager
+            .mint_quote_bolt11_status(mint_quote, MintQuoteState::Issued);
 
         Ok(nut04::MintBolt11Response {
             signatures: blind_signatures,

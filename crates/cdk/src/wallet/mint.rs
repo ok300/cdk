@@ -1,16 +1,17 @@
 use tracing::instrument;
 
 use super::MintQuote;
+use crate::amount::SplitTarget;
+use crate::dhke::construct_proofs;
 use crate::nuts::nut00::ProofsMethods;
-use crate::{
-    amount::SplitTarget,
-    dhke::construct_proofs,
-    nuts::{nut12, MintQuoteBolt11Response, PreMintSecrets, SpendingConditions, State},
-    types::ProofInfo,
-    util::unix_time,
-    wallet::MintQuoteState,
-    Amount, Error, Wallet,
+use crate::nuts::{
+    nut12, MintBolt11Request, MintQuoteBolt11Request, MintQuoteBolt11Response, PreMintSecrets,
+    Proofs, SecretKey, SpendingConditions, State,
 };
+use crate::types::ProofInfo;
+use crate::util::unix_time;
+use crate::wallet::MintQuoteState;
+use crate::{Amount, Error, Wallet};
 
 impl Wallet {
     /// Mint Quote
@@ -45,7 +46,7 @@ impl Wallet {
         description: Option<String>,
     ) -> Result<MintQuote, Error> {
         let mint_url = self.mint_url.clone();
-        let unit = self.unit;
+        let unit = self.unit.clone();
 
         // If we have a description, we check that the mint supports it.
         if description.is_some() {
@@ -64,19 +65,26 @@ impl Wallet {
             }
         }
 
-        let quote_res = self
-            .client
-            .post_mint_quote(mint_url.clone(), amount, unit, description)
-            .await?;
+        let secret_key = SecretKey::generate();
+
+        let request = MintQuoteBolt11Request {
+            amount,
+            unit: unit.clone(),
+            description,
+            pubkey: Some(secret_key.public_key()),
+        };
+
+        let quote_res = self.client.post_mint_quote(request).await?;
 
         let quote = MintQuote {
             mint_url,
-            id: quote_res.quote.clone(),
+            id: quote_res.quote,
             amount,
-            unit,
+            unit: unit.clone(),
             request: quote_res.request,
             state: quote_res.state,
             expiry: quote_res.expiry.unwrap_or(0),
+            secret_key: Some(secret_key),
         };
 
         self.localstore.add_mint_quote(quote.clone()).await?;
@@ -86,11 +94,11 @@ impl Wallet {
 
     /// Check mint quote status
     #[instrument(skip(self, quote_id))]
-    pub async fn mint_quote_state(&self, quote_id: &str) -> Result<MintQuoteBolt11Response, Error> {
-        let response = self
-            .client
-            .get_mint_quote_status(self.mint_url.clone(), quote_id)
-            .await?;
+    pub async fn mint_quote_state(
+        &self,
+        quote_id: &str,
+    ) -> Result<MintQuoteBolt11Response<String>, Error> {
+        let response = self.client.get_mint_quote_status(quote_id).await?;
 
         match self.localstore.get_mint_quote(quote_id).await? {
             Some(quote) => {
@@ -117,10 +125,11 @@ impl Wallet {
             let mint_quote_response = self.mint_quote_state(&mint_quote.id).await?;
 
             if mint_quote_response.state == MintQuoteState::Paid {
-                let amount = self
+                // TODO: Need to pass in keys here
+                let proofs = self
                     .mint(&mint_quote.id, SplitTarget::default(), None)
                     .await?;
-                total_amount += amount;
+                total_amount += proofs.total_amount()?;
             } else if mint_quote.expiry.le(&unix_time()) {
                 self.localstore.remove_mint_quote(&mint_quote.id).await?;
             }
@@ -136,6 +145,7 @@ impl Wallet {
     /// use anyhow::Result;
     /// use cdk::amount::{Amount, SplitTarget};
     /// use cdk::cdk_database::WalletMemoryDatabase;
+    /// use cdk::nuts::nut00::ProofsMethods;
     /// use cdk::nuts::CurrencyUnit;
     /// use cdk::wallet::Wallet;
     /// use rand::Rng;
@@ -153,7 +163,8 @@ impl Wallet {
     ///     let quote = wallet.mint_quote(amount, None).await?;
     ///     let quote_id = quote.id;
     ///     // To be called after quote request is paid
-    ///     let amount_minted = wallet.mint(&quote_id, SplitTarget::default(), None).await?;
+    ///     let minted_proofs = wallet.mint(&quote_id, SplitTarget::default(), None).await?;
+    ///     let minted_amount = minted_proofs.total_amount()?;
     ///
     ///     Ok(())
     /// }
@@ -164,7 +175,7 @@ impl Wallet {
         quote_id: &str,
         amount_split_target: SplitTarget,
         spending_conditions: Option<SpendingConditions>,
-    ) -> Result<Amount, Error> {
+    ) -> Result<Proofs, Error> {
         // Check that mint is in store of mints
         if self
             .localstore
@@ -212,10 +223,17 @@ impl Wallet {
             )?,
         };
 
-        let mint_res = self
-            .client
-            .post_mint(self.mint_url.clone(), quote_id, premint_secrets.clone())
-            .await?;
+        let mut request = MintBolt11Request {
+            quote: quote_id.to_string(),
+            outputs: premint_secrets.blinded_messages(),
+            signature: None,
+        };
+
+        if let Some(secret_key) = quote_info.secret_key {
+            request.sign(secret_key)?;
+        }
+
+        let mint_res = self.client.post_mint(request).await?;
 
         let keys = self.get_keyset_keys(active_keyset_id).await?;
 
@@ -238,33 +256,37 @@ impl Wallet {
             &keys,
         )?;
 
-        let minted_amount = proofs.total_amount()?;
-
         // Remove filled quote from store
         self.localstore.remove_mint_quote(&quote_info.id).await?;
 
         if spending_conditions.is_none() {
+            tracing::debug!(
+                "Incrementing keyset {} counter by {}",
+                active_keyset_id,
+                proofs.len()
+            );
+
             // Update counter for keyset
             self.localstore
                 .increment_keyset_counter(&active_keyset_id, proofs.len() as u32)
                 .await?;
         }
 
-        let proofs = proofs
-            .into_iter()
+        let proof_infos = proofs
+            .iter()
             .map(|proof| {
                 ProofInfo::new(
-                    proof,
+                    proof.clone(),
                     self.mint_url.clone(),
                     State::Unspent,
-                    quote_info.unit,
+                    quote_info.unit.clone(),
                 )
             })
             .collect::<Result<Vec<ProofInfo>, _>>()?;
 
         // Add new proofs to store
-        self.localstore.update_proofs(proofs, vec![]).await?;
+        self.localstore.update_proofs(proof_infos, vec![]).await?;
 
-        Ok(minted_amount)
+        Ok(proofs)
     }
 }

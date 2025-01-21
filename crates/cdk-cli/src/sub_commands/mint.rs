@@ -1,18 +1,17 @@
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use cdk::amount::SplitTarget;
 use cdk::cdk_database::{Error, WalletDatabase};
 use cdk::mint_url::MintUrl;
-use cdk::nuts::{CurrencyUnit, MintQuoteState};
-use cdk::wallet::multi_mint_wallet::WalletKey;
-use cdk::wallet::{MultiMintWallet, Wallet};
+use cdk::nuts::nut00::ProofsMethods;
+use cdk::nuts::{CurrencyUnit, MintQuoteState, NotificationPayload};
+use cdk::wallet::types::WalletKey;
+use cdk::wallet::{MultiMintWallet, Wallet, WalletSubscription};
 use cdk::Amount;
 use clap::Args;
 use serde::{Deserialize, Serialize};
-use tokio::time::sleep;
 
 #[derive(Args, Serialize, Deserialize)]
 pub struct MintSubCommand {
@@ -39,7 +38,7 @@ pub async fn mint(
     let description: Option<String> = sub_command_args.description.clone();
 
     let wallet = match multi_mint_wallet
-        .get_wallet(&WalletKey::new(mint_url.clone(), CurrencyUnit::Sat))
+        .get_wallet(&WalletKey::new(mint_url.clone(), unit.clone()))
         .await
     {
         Some(wallet) => wallet.clone(),
@@ -59,17 +58,23 @@ pub async fn mint(
 
     println!("Please pay: {}", quote.request);
 
-    loop {
-        let status = wallet.mint_quote_state(&quote.id).await?;
+    let mut subscription = wallet
+        .subscribe(WalletSubscription::Bolt11MintQuoteState(vec![quote
+            .id
+            .clone()]))
+        .await;
 
-        if status.state == MintQuoteState::Paid {
-            break;
+    while let Some(msg) = subscription.recv().await {
+        if let NotificationPayload::MintQuoteBolt11Response(response) = msg {
+            if response.state == MintQuoteState::Paid {
+                break;
+            }
         }
-
-        sleep(Duration::from_secs(2)).await;
     }
 
-    let receive_amount = wallet.mint(&quote.id, SplitTarget::default(), None).await?;
+    let proofs = wallet.mint(&quote.id, SplitTarget::default(), None).await?;
+
+    let receive_amount = proofs.total_amount()?;
 
     println!("Received {receive_amount} from mint {mint_url}");
 

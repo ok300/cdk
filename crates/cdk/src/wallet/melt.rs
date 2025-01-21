@@ -3,16 +3,16 @@ use std::str::FromStr;
 use lightning_invoice::Bolt11Invoice;
 use tracing::instrument;
 
-use crate::nuts::nut00::ProofsMethods;
-use crate::{
-    dhke::construct_proofs,
-    nuts::{CurrencyUnit, MeltQuoteBolt11Response, PreMintSecrets, Proofs, State},
-    types::{Melted, ProofInfo},
-    util::unix_time,
-    Amount, Error, Wallet,
-};
-
 use super::MeltQuote;
+use crate::amount::to_unit;
+use crate::dhke::construct_proofs;
+use crate::nuts::{
+    CurrencyUnit, MeltBolt11Request, MeltOptions, MeltQuoteBolt11Request, MeltQuoteBolt11Response,
+    PreMintSecrets, Proofs, ProofsMethods, State,
+};
+use crate::types::{Melted, ProofInfo};
+use crate::util::unix_time;
+use crate::{Error, Wallet};
 
 impl Wallet {
     /// Melt Quote
@@ -43,34 +43,39 @@ impl Wallet {
     pub async fn melt_quote(
         &self,
         request: String,
-        mpp: Option<Amount>,
+        options: Option<MeltOptions>,
     ) -> Result<MeltQuote, Error> {
         let invoice = Bolt11Invoice::from_str(&request)?;
 
-        let request_amount = invoice
-            .amount_milli_satoshis()
+        let amount_msat = options
+            .map(|opt| opt.amount_msat().into())
+            .or_else(|| invoice.amount_milli_satoshis())
             .ok_or(Error::InvoiceAmountUndefined)?;
 
-        let amount = match self.unit {
-            CurrencyUnit::Sat => Amount::from(request_amount / 1000),
-            CurrencyUnit::Msat => Amount::from(request_amount),
-            _ => return Err(Error::UnitUnsupported),
+        let amount_quote_unit = to_unit(amount_msat, &CurrencyUnit::Msat, &self.unit).unwrap();
+
+        let quote_request = MeltQuoteBolt11Request {
+            request: Bolt11Invoice::from_str(&request)?,
+            unit: self.unit.clone(),
+            options,
         };
 
-        let quote_res = self
-            .client
-            .post_melt_quote(self.mint_url.clone(), self.unit, invoice, mpp)
-            .await?;
+        let quote_res = self.client.post_melt_quote(quote_request).await?;
 
-        if quote_res.amount != amount {
+        if quote_res.amount != amount_quote_unit {
+            tracing::warn!(
+                "Mint returned incorrect quote amount. Expected {}, got {}",
+                amount_quote_unit,
+                quote_res.amount
+            );
             return Err(Error::IncorrectQuoteAmount);
         }
 
         let quote = MeltQuote {
             id: quote_res.quote,
-            amount,
+            amount: amount_quote_unit,
             request,
-            unit: self.unit,
+            unit: self.unit.clone(),
             fee_reserve: quote_res.fee_reserve,
             state: quote_res.state,
             expiry: quote_res.expiry,
@@ -87,11 +92,8 @@ impl Wallet {
     pub async fn melt_quote_status(
         &self,
         quote_id: &str,
-    ) -> Result<MeltQuoteBolt11Response, Error> {
-        let response = self
-            .client
-            .get_melt_quote_status(self.mint_url.clone(), quote_id)
-            .await?;
+    ) -> Result<MeltQuoteBolt11Response<String>, Error> {
+        let response = self.client.get_melt_quote_status(quote_id).await?;
 
         match self.localstore.get_melt_quote(quote_id).await? {
             Some(quote) => {
@@ -146,15 +148,13 @@ impl Wallet {
             proofs_total - quote_info.amount,
         )?;
 
-        let melt_response = self
-            .client
-            .post_melt(
-                self.mint_url.clone(),
-                quote_id.to_string(),
-                proofs.clone(),
-                Some(premint_secrets.blinded_messages()),
-            )
-            .await;
+        let request = MeltBolt11Request {
+            quote: quote_id.to_string(),
+            inputs: proofs.clone(),
+            outputs: Some(premint_secrets.blinded_messages()),
+        };
+
+        let melt_response = self.client.post_melt(request).await;
 
         let melt_response = match melt_response {
             Ok(melt_response) => melt_response,
@@ -226,7 +226,7 @@ impl Wallet {
                             proof,
                             self.mint_url.clone(),
                             State::Unspent,
-                            quote_info.unit,
+                            quote_info.unit.clone(),
                         )
                     })
                     .collect::<Result<Vec<ProofInfo>, _>>()?
