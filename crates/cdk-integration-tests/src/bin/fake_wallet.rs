@@ -19,11 +19,11 @@ async fn main() -> Result<()> {
             start_fake_mint(addr, port, MintMemoryDatabase::default()).await?;
         }
         "SQLITE" => {
-            let sqlite_db = MintSqliteDatabase::new(&get_temp_dir().join("mint")).await?;
+            let sqlite_db = MintSqliteDatabase::new(&get_temp_dir().join("mint"), 0).await?;
             start_fake_mint(addr, port, sqlite_db).await?;
         }
         "REDB" => {
-            let redb_db = MintRedbDatabase::new(&get_temp_dir().join("mint")).unwrap();
+            let redb_db = MintRedbDatabase::new(&get_temp_dir().join("mint"), 0)?;
             start_fake_mint(addr, port, redb_db).await?;
         }
         _ => panic!("Unknown mint db type: {}", mint_db_kind),

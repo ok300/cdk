@@ -44,6 +44,9 @@ pub enum Error {
     /// Invalid Database Path
     #[error("Invalid database path")]
     InvalidDbPath,
+    /// Error while trying to prepare or executing a DB backup
+    #[error("Error while doing DB backup: {0}")]
+    DbBackup(cdk_common::database::Error),
     /// Serde Error
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
