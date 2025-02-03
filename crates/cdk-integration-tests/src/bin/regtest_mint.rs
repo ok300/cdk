@@ -147,8 +147,8 @@ async fn main() -> Result<()> {
 
     let mint_db_kind = env::var("MINT_DATABASE")?;
 
-    let lnd_mint_db_path = get_temp_dir().join("lnd_mint");
-    let cln_mint_db_path = get_temp_dir().join("cln_mint");
+    let lnd_mint_db_path = get_temp_dir().join("lnd_mint/");
+    let cln_mint_db_path = get_temp_dir().join("cln_mint/");
 
     let cln_backend = create_cln_backend(&cln_client).await?;
     let lnd_mint_port = 8087;
