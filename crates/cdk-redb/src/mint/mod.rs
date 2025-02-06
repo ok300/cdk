@@ -54,8 +54,10 @@ pub struct MintRedbDatabase {
 
 impl MintRedbDatabase {
     /// Create new [`MintRedbDatabase`]
-    pub fn new(work_dir: &Path, _backups_to_keep: u8) -> Result<Self, Error> {
+    pub fn new(work_dir: &Path, backups_to_keep: u8) -> Result<Self, Error> {
         let db_file_path = work_dir.join("cdk-mintd.redb");
+
+        Self::backup(work_dir, &db_file_path, backups_to_keep)?;
 
         let db_inner = Arc::new(Database::create(db_file_path)?);
         let redb_db = Self {
@@ -65,6 +67,16 @@ impl MintRedbDatabase {
         Self::migrate(db_inner.clone())?;
 
         Ok(redb_db)
+    }
+
+    fn backup(work_dir: &Path, db_file_path: &PathBuf, backups_to_keep: u8) -> Result<(), Error> {
+        if let Some(new_backup_file) =
+            database::prepare_backup(work_dir, "redb", backups_to_keep).map_err(Error::DbBackup)?
+        {
+            Self::create_backup(db_file_path, new_backup_file).map_err(Error::DbBackup)?;
+        }
+
+        Ok(())
     }
 
     fn migrate(db: Arc<Database>) -> Result<(), Error> {
@@ -161,17 +173,29 @@ impl MintRedbDatabase {
 
         Ok(())
     }
+
+    fn create_backup(
+        db_file_path: &PathBuf,
+        backup_file_path: PathBuf,
+    ) -> Result<(), database::Error> {
+        // The closest thing to a backup/restore in redb seems to be
+        // https://github.com/cberner/redb/issues/100#issuecomment-1371786445
+        // However, that is very error prone, as the table list has to be maintained manually.
+        //
+        // The savepoint feature is also not usable for our use-case, as savepoints are for rolling
+        // back transactions and do not allow restoring an older DB schema.
+        //
+        // Therefore, backups are done by copying the underlying DB file before the DB is opened.
+
+        std::fs::copy(db_file_path, backup_file_path).unwrap(); // TODO Error handling
+
+        Ok(())
+    }
 }
 
 #[async_trait]
 impl MintDatabase for MintRedbDatabase {
     type Err = database::Error;
-
-    async fn create_backup(&self, _backup_file_path: PathBuf) -> Result<(), Self::Err> {
-        // TODO Can redb do backups?
-
-        todo!()
-    }
 
     async fn set_active_keyset(&self, unit: CurrencyUnit, id: Id) -> Result<(), Self::Err> {
         let write_txn = self.db.begin_write().map_err(Error::from)?;
